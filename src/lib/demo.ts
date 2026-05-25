@@ -18,20 +18,43 @@ interface DemoMeta {
 
 const BASE = `${import.meta.env.BASE_URL}demo-data`;
 
-function load<T>(file: string): Promise<T> {
-  return fetch(`${BASE}/${file}`).then((r) => {
-    if (!r.ok) throw new Error(`demo data ${file}: ${r.status}`);
-    return r.json() as Promise<T>;
-  });
-}
-
+// Several independently-generated synthetic datasets are bundled under
+// demo-data/<id>/; index.json lists them. The UI flips between them to show the
+// predictions aren't hardcoded. Older single-dataset builds (no index.json) fall
+// back to the flat demo-data/ root via the empty id.
+let _ids: Promise<string[]> | null = null;
+let current = 0;
 let _meta: Promise<DemoMeta> | null = null;
 let _metrics: Promise<MetricRow[]> | null = null;
 let _points: Promise<DemoPoint[]> | null = null;
 
+function datasetIds(): Promise<string[]> {
+  return (_ids ??= fetch(`${BASE}/index.json`)
+    .then((r) => (r.ok ? (r.json() as Promise<{ ids: string[] }>) : null))
+    .then((j) => j?.ids ?? [""])
+    .catch(() => [""]));
+}
+
+async function load<T>(file: string): Promise<T> {
+  const ids = await datasetIds();
+  const sub = ids[current] ? `/${ids[current]}` : "";
+  const r = await fetch(`${BASE}${sub}/${file}`);
+  if (!r.ok) throw new Error(`demo data ${file}: ${r.status}`);
+  return r.json() as Promise<T>;
+}
+
 const meta = () => (_meta ??= load<DemoMeta>("meta.json"));
 const metrics = () => (_metrics ??= load<MetricRow[]>("metrics.json"));
 const points = () => (_points ??= load<DemoPoint[]>("predictions.json"));
+
+export async function demoDatasetCount(): Promise<number> {
+  return (await datasetIds()).length;
+}
+
+export function setDemoDataset(i: number): void {
+  current = i;
+  _meta = _metrics = _points = null; // force reload from the newly-selected dataset
+}
 
 export async function demoModels(): Promise<string[]> {
   return (await meta()).models;

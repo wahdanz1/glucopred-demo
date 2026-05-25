@@ -1,0 +1,1 @@
+{"models": ["ar_2", "linear_extrapolation", "lstm", "moving_average_5", "persistence"], "splits": ["test"], "range": {"test": {"start": "2025-01-28T18:15:00", "end": "2025-01-30T23:55:00"}}}

@@ -45,6 +45,16 @@ async function getJson<T>(url: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// Demo-only: how many bundled synthetic datasets exist, and which is active.
+// The backend path has a single live dataset, so count is 1 and selection is a no-op.
+export function fetchDatasetCount(): Promise<number> {
+  return DEMO ? demo.demoDatasetCount() : Promise.resolve(1);
+}
+
+export function setDataset(i: number): void {
+  if (DEMO) demo.setDemoDataset(i);
+}
+
 export function fetchModels(): Promise<string[]> {
   if (DEMO) return demo.demoModels();
   return getJson<string[]>("/api/models");
