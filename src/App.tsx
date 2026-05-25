@@ -6,7 +6,13 @@ import { Select } from "./components/ui/Select";
 import { Toggle } from "./components/ui/Toggle";
 import { Table, type Column } from "./components/ui/Table";
 import { Banner } from "./components/ui/Banner";
+import { LinkButton } from "./components/ui/LinkButton";
 import { PredictionChart } from "./components/PredictionChart";
+import logoUrl from "./assets/glucopred-logo.svg";
+import { FaGithub, FaLinkedin } from "react-icons/fa6";
+
+const GITHUB_URL = "https://github.com/wahdanz1/glucopred-demo";
+const LINKEDIN_URL = "https://linkedin.com/in/dwahlgren";
 import {
   fetchMetrics,
   fetchModels,
@@ -165,55 +171,29 @@ export default function App() {
           demonstrate the app; the numbers carry no clinical meaning.
         </Banner>
       )}
-      <header className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-medium text-foreground">GlucoPred</h1>
-        <p className="text-sm text-muted-foreground">
-          Actual vs predicted glucose over time
-        </p>
-      </header>
-
       <Card>
-        <CardHeader title="Filters" />
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <Field label="Split">
-            <Select
-              options={SPLITS}
-              value={split}
-              onChange={(e) => setSplit(e.target.value)}
-            />
-          </Field>
-          <Field label="Horizon">
-            <Select
-              options={HORIZONS}
-              value={String(horizon)}
-              onChange={(e) => setHorizon(Number(e.target.value))}
-            />
-          </Field>
-          <Field label="From">
-            <Input
-              type="datetime-local"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-            />
-          </Field>
-          <Field label="To">
-            <Input
-              type="datetime-local"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-            />
-          </Field>
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {models.map((m) => (
-            <Toggle
-              key={m}
-              label={prettyName(m)}
-              active={selected.has(m)}
-              swatch={colorFor(m)}
-              onClick={() => toggleModel(m)}
-            />
-          ))}
+        <div className="flex items-center justify-between gap-6">
+          <div>
+            <h1 className="text-2xl font-medium text-foreground">GlucoPred</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Degree thesis (examensarbete) by Daniel Wahlgren
+            </p>
+            <p className="mt-3 max-w-3xl text-sm text-muted-foreground">
+              Forecasting blood glucose 15–60 minutes ahead from continuous glucose
+              monitor and insulin-pump data. Choose a prediction horizon and which models
+              to overlay; each model's forecast is compared against the glucose that was
+              actually measured.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <LinkButton href={GITHUB_URL} icon={<FaGithub size={16} />}>
+                Source
+              </LinkButton>
+              <LinkButton href={LINKEDIN_URL} icon={<FaLinkedin size={16} />}>
+                Contact
+              </LinkButton>
+            </div>
+          </div>
+          <img src={logoUrl} alt="GlucoPred logo" className="mr-2 h-20 w-auto shrink-0" />
         </div>
       </Card>
 
@@ -222,6 +202,11 @@ export default function App() {
           title="Predictions vs actual"
           subtitle={loading ? "loading…" : `${points.length} points`}
         />
+        <p className="mb-3 text-xs text-muted-foreground">
+          Solid line is the measured glucose; dashed lines are each model's prediction
+          for that moment, made {horizon} min earlier. The shaded band is the
+          3.9–10.0 mmol/L target range. Scroll to zoom, drag to pan, double-click to reset.
+        </p>
         {error ? (
           <p className="text-sm text-muted-foreground">{error}</p>
         ) : (
@@ -231,6 +216,51 @@ export default function App() {
             horizon={horizon}
           />
         )}
+
+        <div className="mt-5 border-t border-border pt-4">
+          <h3 className="mb-3 text-sm font-medium text-foreground">Filters</h3>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <Field label="Split">
+              <Select
+                options={SPLITS}
+                value={split}
+                onChange={(e) => setSplit(e.target.value)}
+              />
+            </Field>
+            <Field label="Horizon">
+              <Select
+                options={HORIZONS}
+                value={String(horizon)}
+                onChange={(e) => setHorizon(Number(e.target.value))}
+              />
+            </Field>
+            <Field label="From">
+              <Input
+                type="datetime-local"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+              />
+            </Field>
+            <Field label="To">
+              <Input
+                type="datetime-local"
+                value={end}
+                onChange={(e) => setEnd(e.target.value)}
+              />
+            </Field>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {models.map((m) => (
+              <Toggle
+                key={m}
+                label={prettyName(m)}
+                active={selected.has(m)}
+                swatch={colorFor(m)}
+                onClick={() => toggleModel(m)}
+              />
+            ))}
+          </div>
+        </div>
       </Card>
 
       <Card>

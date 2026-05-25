@@ -1,5 +1,7 @@
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CartesianGrid,
+  Legend,
   Line,
   LineChart,
   ReferenceArea,
@@ -19,13 +21,87 @@ interface PredictionChartProps {
 
 const TIR_LOW = 3.9;
 const TIR_HIGH = 10.0;
+const MIN_SPAN_MS = 30 * 60 * 1000; // don't zoom tighter than 30 minutes
 
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+function formatTime(ms: number): string {
+  return new Date(ms).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function clampDomain(
+  [lo, hi]: [number, number],
+  [fullLo, fullHi]: [number, number],
+): [number, number] {
+  const span = Math.min(hi - lo, fullHi - fullLo);
+  let nlo = Math.max(lo, fullLo);
+  let nhi = nlo + span;
+  if (nhi > fullHi) {
+    nhi = fullHi;
+    nlo = nhi - span;
+  }
+  return [nlo, nhi];
 }
 
 export function PredictionChart({ points, models, horizon }: PredictionChartProps) {
+  // Numeric time axis (epoch ms) so we can drive zoom/pan via the x-domain.
+  const data = useMemo(
+    () => points.map((p) => ({ ...p, t: Date.parse(p.timestamp) })),
+    [points],
+  );
+  const full = useMemo<[number, number]>(
+    () => (data.length ? [data[0].t, data[data.length - 1].t] : [0, 1]),
+    [data],
+  );
+
+  const [domain, setDomain] = useState<[number, number] | null>(null);
+  const view = domain ?? full;
+
+  // Reset the view whenever the underlying data changes.
+  useEffect(() => setDomain(null), [points]);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; lo: number; hi: number } | null>(null);
+
+  // Wheel-to-zoom around the cursor. Needs a non-passive listener to preventDefault.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const frac = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
+      setDomain((cur) => {
+        const [lo, hi] = cur ?? full;
+        const span = hi - lo;
+        const center = lo + span * frac;
+        const factor = e.deltaY > 0 ? 1.2 : 1 / 1.2; // down = zoom out
+        const newSpan = Math.min(Math.max(span * factor, MIN_SPAN_MS), full[1] - full[0]);
+        const nlo = center - (center - lo) * (newSpan / span);
+        return clampDomain([nlo, nlo + newSpan], full);
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [full]);
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    drag.current = { x: e.clientX, lo: view[0], hi: view[1] };
+  };
+  const onMouseMove = (e: React.MouseEvent) => {
+    const d = drag.current;
+    const el = containerRef.current;
+    if (!d || !el) return;
+    const span = d.hi - d.lo;
+    const dxFrac = (e.clientX - d.x) / el.getBoundingClientRect().width;
+    setDomain(clampDomain([d.lo - dxFrac * span, d.hi - dxFrac * span], full));
+  };
+  const endDrag = () => {
+    drag.current = null;
+  };
+
   if (points.length === 0) {
     return (
       <div className="flex h-72 items-center justify-center text-sm text-muted-foreground">
@@ -35,19 +111,37 @@ export function PredictionChart({ points, models, horizon }: PredictionChartProp
   }
 
   return (
-    <div className="h-96 w-full">
+    <div
+      ref={containerRef}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={endDrag}
+      onMouseLeave={endDrag}
+      onDoubleClick={() => setDomain(null)}
+      className="h-[28rem] w-full cursor-grab select-none active:cursor-grabbing"
+    >
       <ResponsiveContainer>
-        <LineChart data={points} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+        <LineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
           <CartesianGrid stroke="var(--color-border)" strokeDasharray="2 4" />
+          <Legend
+            verticalAlign="top"
+            height={28}
+            wrapperStyle={{ fontSize: 12, color: "var(--color-muted-foreground)" }}
+          />
           <XAxis
-            dataKey="timestamp"
+            dataKey="t"
+            type="number"
+            scale="time"
+            domain={view}
+            allowDataOverflow
             tickFormatter={formatTime}
             stroke="var(--color-muted-foreground)"
             tick={{ fontSize: 11 }}
             minTickGap={48}
           />
           <YAxis
-            domain={["auto", "auto"]}
+            domain={[0, "auto"]}
+            allowDataOverflow
             stroke="var(--color-muted-foreground)"
             tick={{ fontSize: 11 }}
             label={{
@@ -72,7 +166,7 @@ export function PredictionChart({ points, models, horizon }: PredictionChartProp
               borderRadius: 6,
               fontSize: 12,
             }}
-            labelFormatter={(v) => new Date(v).toLocaleString()}
+            labelFormatter={(v) => new Date(Number(v)).toLocaleString()}
             formatter={(value, key) => [
               typeof value === "number" ? value.toFixed(2) : value,
               prettyName(String(key)),
