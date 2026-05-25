@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardHeader } from "./components/ui/Card";
 import { Field } from "./components/ui/Field";
-import { Input } from "./components/ui/Input";
 import { Select } from "./components/ui/Select";
 import { Toggle } from "./components/ui/Toggle";
 import { Table, type Column } from "./components/ui/Table";
 import { Banner } from "./components/ui/Banner";
 import { LinkButton } from "./components/ui/LinkButton";
+import { Disclosure } from "./components/ui/Disclosure";
 import { PredictionChart } from "./components/PredictionChart";
 import logoUrl from "./assets/glucopred-logo.svg";
 import { FaGithub, FaLinkedin } from "react-icons/fa6";
@@ -39,7 +39,15 @@ const HORIZONS = [
   { value: "60", label: "+60 min" },
 ];
 
-const WINDOW_HOURS = 24;
+const DEFAULT_WINDOW_HOURS = 72;
+
+const WINDOWS = [
+  { value: "24", label: "Last 1 day" },
+  { value: "72", label: "Last 3 days" },
+  { value: "168", label: "Last 7 days" },
+  { value: "336", label: "Last 14 days" },
+  { value: "720", label: "Last 30 days" },
+];
 
 function toDatetimeLocalValue(iso: string): string {
   return iso.slice(0, 16);
@@ -85,13 +93,17 @@ export default function App() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [split, setSplit] = useState("test");
   const [horizon, setHorizon] = useState(30);
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
+  const [rangeEnd, setRangeEnd] = useState("");
+  const [windowHours, setWindowHours] = useState(DEFAULT_WINDOW_HOURS);
 
   const [metrics, setMetrics] = useState<MetricRow[]>([]);
   const [points, setPoints] = useState<PredictionPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The visible window is the most recent `windowHours` of the split's data.
+  const end = rangeEnd ? toDatetimeLocalValue(rangeEnd) : "";
+  const start = rangeEnd ? shiftHours(rangeEnd, -windowHours) : "";
 
   useEffect(() => {
     (async () => {
@@ -102,8 +114,7 @@ export default function App() {
         ]);
         setModels(allModels);
         setSelected(new Set(allModels));
-        setStart(shiftHours(range.end, -WINDOW_HOURS));
-        setEnd(toDatetimeLocalValue(range.end));
+        setRangeEnd(range.end);
       } catch (e) {
         setError(String(e));
       }
@@ -167,7 +178,7 @@ export default function App() {
     <main className="mx-auto flex max-w-6xl flex-col gap-5 p-6">
       {DEMO && (
         <Banner>
-          <strong>Synthetic demo data</strong> — not real patient data. Generated to
+          <strong>Synthetic demo data</strong> - not real patient data. Generated to
           demonstrate the app; the numbers carry no clinical meaning.
         </Banner>
       )}
@@ -207,6 +218,26 @@ export default function App() {
           for that moment, made {horizon} min earlier. The shaded band is the
           3.9–10.0 mmol/L target range. Scroll to zoom, drag to pan, double-click to reset.
         </p>
+        <div className="mb-4 flex flex-col gap-2">
+          <Disclosure summary="What am I looking at?">
+            The solid white line is the real, measured glucose. Each dashed line is a
+            model's prediction for that same moment, made {horizon} minutes earlier.
+            Where a dashed line meets the white line, that prediction was exactly right
+            for that instant.
+          </Disclosure>
+          <Disclosure summary="How does the model predict?">
+            At any moment it reads the previous 2 hours of glucose and insulin data and
+            outputs the glucose it expects {horizon} minutes later. It only ever uses the
+            past - never the future it's trying to predict.
+          </Disclosure>
+          <Disclosure summary="Why do the dashed lines lag behind the white line?">
+            Predicting further ahead is harder, so a model leans on the recent trend and
+            tends to reach peaks and drops a little late - and that lag grows with the
+            horizon (+15 → +30 → +60 min). A perfect model would sit exactly on the white
+            line; the gap is how far from perfect it is. The "persistence" baseline
+            (predict "same as now") is the clearest case and the bar every model must beat.
+          </Disclosure>
+        </div>
         {error ? (
           <p className="text-sm text-muted-foreground">{error}</p>
         ) : (
@@ -219,7 +250,7 @@ export default function App() {
 
         <div className="mt-5 border-t border-border pt-4">
           <h3 className="mb-3 text-sm font-medium text-foreground">Filters</h3>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
             <Field label="Split">
               <Select
                 options={SPLITS}
@@ -234,18 +265,11 @@ export default function App() {
                 onChange={(e) => setHorizon(Number(e.target.value))}
               />
             </Field>
-            <Field label="From">
-              <Input
-                type="datetime-local"
-                value={start}
-                onChange={(e) => setStart(e.target.value)}
-              />
-            </Field>
-            <Field label="To">
-              <Input
-                type="datetime-local"
-                value={end}
-                onChange={(e) => setEnd(e.target.value)}
+            <Field label="Window">
+              <Select
+                options={WINDOWS}
+                value={String(windowHours)}
+                onChange={(e) => setWindowHours(Number(e.target.value))}
               />
             </Field>
           </div>

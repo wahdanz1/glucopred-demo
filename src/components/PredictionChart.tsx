@@ -45,6 +45,89 @@ function clampDomain(
   return [nlo, nhi];
 }
 
+interface TooltipEntry {
+  dataKey?: string | number;
+  name?: string;
+  value?: number | string;
+  color?: string;
+}
+
+// Custom tooltip: "Actual" listed first and emphasised, models after.
+function ChartTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: TooltipEntry[];
+  label?: number | string;
+}) {
+  if (!active || !payload?.length) return null;
+  const ordered = [...payload].sort((a, b) =>
+    a.dataKey === "actual" ? -1 : b.dataKey === "actual" ? 1 : 0,
+  );
+  return (
+    <div className="rounded-md border border-border bg-card px-3 py-2 text-xs">
+      <div className="mb-1 text-muted-foreground">
+        {new Date(Number(label)).toLocaleString()}
+      </div>
+      {ordered.map((e) => {
+        const isActual = e.dataKey === "actual";
+        return (
+          <div
+            key={String(e.dataKey)}
+            className={
+              isActual
+                ? "flex items-center gap-2 text-sm font-semibold text-foreground"
+                : "flex items-center gap-2 text-muted-foreground"
+            }
+          >
+            <span
+              aria-hidden
+              className="inline-block h-2 w-2 rounded-full"
+              style={{ background: e.color }}
+            />
+            <span>{e.name}</span>
+            <span className="ml-auto tabular-nums">
+              {typeof e.value === "number" ? e.value.toFixed(2) : e.value}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+interface LegendItem {
+  value?: string;
+  color?: string;
+  dataKey?: string | number;
+}
+
+// Custom legend: "Actual" first (Recharts otherwise sorts entries by name).
+function ChartLegend({ payload }: { payload?: LegendItem[] }) {
+  if (!payload?.length) return null;
+  const ordered = [...payload].sort((a, b) =>
+    a.dataKey === "actual" ? -1 : b.dataKey === "actual" ? 1 : 0,
+  );
+  return (
+    <ul className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+      {ordered.map((e) => (
+        <li key={String(e.dataKey)} className="flex items-center gap-1.5">
+          <span
+            aria-hidden
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ background: e.color }}
+          />
+          <span className={e.dataKey === "actual" ? "font-medium text-foreground" : ""}>
+            {e.value}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function PredictionChart({ points, models, horizon }: PredictionChartProps) {
   // Numeric time axis (epoch ms) so we can drive zoom/pan via the x-domain.
   const data = useMemo(
@@ -55,6 +138,19 @@ export function PredictionChart({ points, models, horizon }: PredictionChartProp
     () => (data.length ? [data[0].t, data[data.length - 1].t] : [0, 1]),
     [data],
   );
+
+  // Dexcom-style fixed ceiling for recognizability: 16 normally, 22 if any value
+  // (actual or predicted) exceeds 16.
+  const yMax = useMemo(() => {
+    let max = 0;
+    for (const p of points) {
+      for (const key of ["actual", ...models]) {
+        const v = (p as Record<string, number | string | null>)[key];
+        if (typeof v === "number" && Number.isFinite(v) && v > max) max = v;
+      }
+    }
+    return max > 16 ? 22 : 16;
+  }, [points, models]);
 
   const [domain, setDomain] = useState<[number, number] | null>(null);
   const view = domain ?? full;
@@ -123,11 +219,7 @@ export function PredictionChart({ points, models, horizon }: PredictionChartProp
       <ResponsiveContainer>
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
           <CartesianGrid stroke="var(--color-border)" strokeDasharray="2 4" />
-          <Legend
-            verticalAlign="top"
-            height={28}
-            wrapperStyle={{ fontSize: 12, color: "var(--color-muted-foreground)" }}
-          />
+          <Legend verticalAlign="top" height={28} content={<ChartLegend />} />
           <XAxis
             dataKey="t"
             type="number"
@@ -140,7 +232,7 @@ export function PredictionChart({ points, models, horizon }: PredictionChartProp
             minTickGap={48}
           />
           <YAxis
-            domain={[0, "auto"]}
+            domain={[0, yMax]}
             allowDataOverflow
             stroke="var(--color-muted-foreground)"
             tick={{ fontSize: 11 }}
@@ -159,19 +251,7 @@ export function PredictionChart({ points, models, horizon }: PredictionChartProp
             stroke="none"
             ifOverflow="extendDomain"
           />
-          <Tooltip
-            contentStyle={{
-              background: "var(--color-card)",
-              border: "1px solid var(--color-border)",
-              borderRadius: 6,
-              fontSize: 12,
-            }}
-            labelFormatter={(v) => new Date(Number(v)).toLocaleString()}
-            formatter={(value, key) => [
-              typeof value === "number" ? value.toFixed(2) : value,
-              prettyName(String(key)),
-            ]}
-          />
+          <Tooltip content={<ChartTooltip />} />
           <Line
             type="monotone"
             dataKey="actual"
