@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(curl -s http://localhost:5173/demo-data/meta.json)",
-      "Bash(wait)",
-      "Bash(git add *)"
-    ]
-  }
-}
