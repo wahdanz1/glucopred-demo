@@ -19,42 +19,23 @@ import {
   type ZoneKey,
 } from "../lib/api";
 import { useIsMobile } from "../lib/useIsMobile";
+import { useT, useTDeferred } from "../lib/i18n";
+import type { Strings } from "../lib/i18n/strings.en";
 
 const ZONES: ZoneKey[] = ["A", "B", "C", "D", "E"];
 
-// Per-zone clinical descriptions used by the legend below the grid. Tied to
-// the standard Clarke 1987 zone definitions but phrased for a non-clinician
-// reader (what the prediction would have meant in practice).
-const ZONE_INFO: Array<{ zone: ZoneKey; name: string; meaning: string }> = [
-  {
-    zone: "A",
-    name: "Accurate",
-    meaning:
-      "Clinically accurate - within 20% of truth, or both in the low range.",
-  },
-  {
-    zone: "B",
-    name: "Benign error",
-    meaning: "Off, but a treatment based on it would do no harm.",
-  },
-  {
-    zone: "C",
-    name: "Overcorrection",
-    meaning:
-      "Would prompt an unnecessary correction, pushing glucose the wrong way.",
-  },
-  {
-    zone: "D",
-    name: "Failure to detect",
-    meaning: "Misses a dangerous high or low that needed action.",
-  },
-  {
-    zone: "E",
-    name: "Erroneous treatment",
-    meaning:
-      "Opposite treatment indicated - treats a high as a low or vice versa.",
-  },
-];
+// Clarke 1987 zone definitions, phrased for a non-clinician reader (what
+// trusting the prediction would have meant in practice). Names and meanings
+// pulled from the active language so the legend translates.
+function zoneInfo(
+  t: Strings,
+): Array<{ zone: ZoneKey; name: string; meaning: string }> {
+  return ZONES.map((zone) => ({
+    zone,
+    name: t.clarke.zones[zone].name,
+    meaning: t.clarke.zones[zone].meaning,
+  }));
+}
 
 const ZONE_COLORS: Record<ZoneKey, string> = {
   A: "var(--color-zone-a)",
@@ -129,6 +110,8 @@ export function ClarkeGrid({
   split,
   onZonePctChange,
 }: ClarkeGridProps) {
+  const t = useTDeferred();
+  const ZONE_INFO = useMemo(() => zoneInfo(t), [t]);
   const isMobile = useIsMobile();
   const axisPx = isMobile ? 40 : AXIS_PX;
   // Centering rule: opposite-side margin must equal axis allocation on the
@@ -239,7 +222,7 @@ export function ClarkeGrid({
               stroke="var(--color-muted-foreground)"
               tick={{ fontSize: tickFontSize }}
               label={{
-                value: "CGM mmol/L",
+                value: t.clarke.axisX,
                 position: "insideBottom",
                 offset: 0,
                 fill: "var(--color-muted-foreground)",
@@ -257,7 +240,7 @@ export function ClarkeGrid({
               stroke="var(--color-muted-foreground)"
               tick={{ fontSize: tickFontSize }}
               label={{
-                value: "Predicted mmol/L",
+                value: t.clarke.axisY,
                 angle: -90,
                 position: "insideLeft",
                 offset: isMobile ? 10 : 16,
@@ -330,26 +313,39 @@ export function ClarkeGrid({
         })}
         {loading && (
           <p className="mt-2 text-center text-sm text-muted-foreground">
-            loading…
+            {t.clarke.loading}
           </p>
         )}
       </div>
       )}
-      {sampled && (
-        <p className="mt-2 text-center text-[11px] text-muted-foreground">
-          Showing {visibleCount.toLocaleString()} of {points.length.toLocaleString()} points
-          (every C/D/E point shown; A/B subsampled for performance). Percentages
-          computed from the full set.
-        </p>
-      )}
+      {/* Reserved slot so the card height stays stable when the user switches
+          models (the text briefly unmounts during the fetch swap). min-h
+          chosen for the typical 2-3 line wrap of the subsampled case. */}
+      <div className="mt-2 min-h-[3rem]">
+        {points.length > 0 &&
+          (sampled ? (
+            <p className="text-center text-[11px] text-muted-foreground">
+              {t.clarke.samplingSubsampled(
+                visibleCount.toLocaleString(),
+                points.length.toLocaleString(),
+              )}
+            </p>
+          ) : (
+            <p className="text-center text-[11px] text-muted-foreground">
+              {t.clarke.samplingFull(points.length.toLocaleString())}
+            </p>
+          ))}
+      </div>
     </div>
   );
 }
 
-/** Standalone Clarke zone legend — meant to live in a side column next to the
+/** Standalone Clarke zone legend - meant to live in a side column next to the
  *  grid. Renders the same badge + name + meaning + percentage rows used inside
  *  the grid component, but separately so the layout can place it anywhere. */
 export function ClarkeZoneLegend({ zonePct }: { zonePct: ZonePctEntry[] }) {
+  const t = useT();
+  const ZONE_INFO = useMemo(() => zoneInfo(t), [t]);
   return (
     <div className="flex flex-col">
       {ZONE_INFO.map(({ zone, name, meaning }) => {

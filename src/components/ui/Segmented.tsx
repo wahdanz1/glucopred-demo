@@ -11,20 +11,24 @@ interface SegmentedProps<V extends string | number> {
   value: V;
   onChange: (value: V) => void;
   ariaLabel?: string;
+  /** When true, skip the startTransition wrapper so the parent can drive its
+   *  own concurrent strategy (e.g. urgent text update + useDeferredValue on
+   *  the chart side). Default false preserves the slide-and-catch-up behavior. */
+  urgent?: boolean;
 }
 
 /**
  * Segmented control with a sliding accent thumb that translates between the
  * active option. Updates its thumb position OPTIMISTICALLY on click via local
- * state, and wraps the parent `onChange` in `startTransition` so any heavy
- * downstream work (chart re-render, fetches) doesn't block the slide paint -
- * the thumb moves immediately, the data catches up.
+ * state, and (unless `urgent`) wraps the parent `onChange` in `startTransition`
+ * so any heavy downstream work doesn't block the slide paint.
  */
 export function Segmented<V extends string | number>({
   options,
   value,
   onChange,
   ariaLabel,
+  urgent = false,
 }: SegmentedProps<V>) {
   const [localValue, setLocalValue] = useState(value);
   const [, startTransition] = useTransition();
@@ -42,7 +46,8 @@ export function Segmented<V extends string | number>({
   const handleClick = (v: V) => {
     if (v === localValue) return;
     setLocalValue(v);                          // urgent - paint the thumb
-    startTransition(() => onChange(v));        // deferred - heavy downstream
+    if (urgent) onChange(v);
+    else startTransition(() => onChange(v));   // deferred - heavy downstream
   };
 
   return (

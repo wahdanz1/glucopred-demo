@@ -7,9 +7,13 @@ import { Segmented } from "./components/ui/Segmented";
 import { Table, type Column } from "./components/ui/Table";
 import { Tooltip } from "./components/ui/Tooltip";
 import { LinkButton } from "./components/ui/LinkButton";
+import { LanguageToggle } from "./components/ui/LanguageToggle";
 import { PredictionChart } from "./components/PredictionChart";
 import { ClarkeGrid, ClarkeZoneLegend, type ZonePctEntry } from "./components/ClarkeGrid";
 import { FaGithub, FaLinkedin } from "react-icons/fa6";
+import { useT, useLang } from "./lib/i18n";
+import type { Strings } from "./lib/i18n/strings.en";
+import type { Lang } from "./lib/i18n";
 
 const GITHUB_URL = "https://github.com/wahdanz1/glucopred-demo";
 const LINKEDIN_URL = "https://linkedin.com/in/dwahlgren";
@@ -29,12 +33,13 @@ import { colorFor, lineStyleFor, prettyName, sortModels } from "./lib/models";
 const DEMO = import.meta.env.VITE_DEMO_MODE === "true";
 
 function LogoMark({ className }: { className?: string }) {
+  const t = useT();
   return (
     <svg
       viewBox="0 0 60.70068 83.793335"
       fill="currentColor"
       role="img"
-      aria-label="GlucoPred logo"
+      aria-label={t.header.logoAriaLabel}
       className={className}
     >
       <g transform="translate(-73.926231,-107.33505)">
@@ -44,13 +49,6 @@ function LogoMark({ className }: { className?: string }) {
     </svg>
   );
 }
-
-const SPLITS = DEMO
-  ? [{ value: "test", label: "Test" }]
-  : [
-      { value: "test", label: "Test" },
-      { value: "val", label: "Validation" },
-    ];
 
 const HORIZONS = [
   { value: 15, label: "+15" },
@@ -71,18 +69,23 @@ function shiftHours(iso: string, hours: number): string {
   return d.toISOString().slice(0, 16);
 }
 
-function modelDescription(modelId: string, horizon: number): string {
+function modelDescription(
+  modelId: string,
+  horizon: number,
+  t: Strings,
+): string {
+  const d = t.clarke.descriptions;
   switch (modelId) {
     case "persistence":
-      return `Predicts that glucose will stay the same ${horizon} minutes from now. The simplest baseline - every other model has to beat it to justify its existence.`;
+      return d.persistence(horizon);
     case "moving_average_5":
-      return "Predicts the average of the last 5 CGM readings (25 minutes). Smooths sensor noise but lags behind actual changes.";
+      return d.moving_average_5;
     case "ar_2":
-      return "A second-order autoregression: a linear combination of the previous two readings. Captures local trend while staying mean-reverting, so it rarely overshoots.";
+      return d.ar_2;
     case "linear_extrapolation":
-      return "Extends the slope between the last two readings forward in time. Aggressive - overshoots when glucose is rising sharply, undershoots when it's falling.";
+      return d.linear_extrapolation;
     case "lstm":
-      return "A neural network trained per horizon. Reads the previous 2 hours of glucose plus insulin context (8 channels including bolus and basal IOB) and predicts ahead. The only model that's aware of insulin.";
+      return d.lstm;
     default:
       return "";
   }
@@ -91,8 +94,19 @@ function modelDescription(modelId: string, horizon: number): string {
 function metricColumns(
   rows: MetricRow[],
   best: Record<string, number>,
+  t: Strings,
+  lang: Lang,
 ): Column<MetricRow>[] {
-  const fmt = (n: number, d = 3) => n.toFixed(d);
+  const fmt = (n: number, d = 3) =>
+    n.toLocaleString(lang, {
+      minimumFractionDigits: d,
+      maximumFractionDigits: d,
+    });
+  const pct = (n: number) =>
+    `${n.toLocaleString(lang, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    })}%`;
   const isBest = (key: string, row: MetricRow) =>
     rows[best[key]]?.model === row.model;
   const numCell = (val: string, best: boolean, danger?: boolean) => (
@@ -108,10 +122,12 @@ function metricColumns(
       {val}
     </span>
   );
+  const col = t.metrics.columns;
+  const tt = t.metrics.tooltips;
   return [
     {
       key: "model",
-      header: "Model",
+      header: col.model,
       render: (r) => (
         <span className="flex items-center gap-2">
           <span
@@ -124,18 +140,18 @@ function metricColumns(
           </span>
           {r.model === "lstm" && (
             <span className="shrink-0 rounded-sm border border-primary/40 bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
-              neural
+              {col.neuralBadge}
             </span>
           )}
         </span>
       ),
     },
-    { key: "n", header: "N", align: "right", render: (r) => r.n.toLocaleString() },
+    { key: "n", header: col.n, align: "right", render: (r) => r.n.toLocaleString(lang) },
     {
       key: "rmse",
       header: (
-        <Tooltip align="end" content="Root-mean-squared error in mmol/L. Heavily penalises large misses. Lower is better.">
-          RMSE
+        <Tooltip align="end" content={tt.rmse}>
+          {col.rmse}
         </Tooltip>
       ),
       align: "right",
@@ -144,8 +160,8 @@ function metricColumns(
     {
       key: "mae",
       header: (
-        <Tooltip align="end" content="Mean absolute error in mmol/L. The model's typical miss size. Lower is better.">
-          MAE
+        <Tooltip align="end" content={tt.mae}>
+          {col.mae}
         </Tooltip>
       ),
       align: "right",
@@ -154,36 +170,36 @@ function metricColumns(
     {
       key: "tir_agreement",
       header: (
-        <Tooltip align="end" content="Time-in-range agreement: share of predictions that agree with reality on whether glucose is in the 3.9–10.0 mmol/L target band. Higher is better.">
-          TIR agr.
+        <Tooltip align="end" content={tt.tirAgr}>
+          {col.tirAgr}
         </Tooltip>
       ),
       align: "right",
       render: (r) =>
-        numCell(`${(r.tir_agreement * 100).toFixed(1)}%`, isBest("tir", r)),
+        numCell(pct(r.tir_agreement * 100), isBest("tir", r)),
     },
     {
       key: "clarke_AB",
       header: (
-        <Tooltip align="end" content="Share of predictions landing in Clarke zones A or B — clinically acceptable: accurate or off in a way that wouldn't lead to harmful action. Higher is better.">
-          A+B
+        <Tooltip align="end" content={tt.ab}>
+          {col.ab}
         </Tooltip>
       ),
       align: "right",
       render: (r) =>
-        numCell(`${(r.clarke_A + r.clarke_B).toFixed(1)}%`, isBest("ab", r)),
+        numCell(pct(r.clarke_A + r.clarke_B), isBest("ab", r)),
     },
     {
       key: "clarke_unsafe",
       header: (
-        <Tooltip align="end" content="Share of predictions in Clarke zones C, D, or E — would lead to a wrong or harmful action. Lower is better; ≥ 5 % is flagged red.">
-          Unsafe
+        <Tooltip align="end" content={tt.unsafe}>
+          {col.unsafe}
         </Tooltip>
       ),
       align: "right",
       render: (r) =>
         numCell(
-          `${r.clarke_unsafe.toFixed(1)}%`,
+          pct(r.clarke_unsafe),
           isBest("unsafe", r),
           r.clarke_unsafe >= 5,
         ),
@@ -192,6 +208,18 @@ function metricColumns(
 }
 
 export default function App() {
+  const t = useT();
+  const { lang } = useLang();
+  const SPLITS = useMemo(
+    () =>
+      DEMO
+        ? [{ value: "test", label: t.splits.test }]
+        : [
+            { value: "test", label: t.splits.test },
+            { value: "val", label: t.splits.validation },
+          ],
+    [t],
+  );
   const [models, setModels] = useState<string[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [split, setSplit] = useState("test");
@@ -329,32 +357,26 @@ export default function App() {
             </div>
             <div className="min-w-0">
               <span className="cal mb-2 block">
-                Degree thesis · Predictive CGM
-                {DEMO && " · Synthetic data"}
+                {t.header.eyebrow}
+                {DEMO && t.header.eyebrowSyntheticSuffix}
               </span>
               <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight text-foreground">
                 <LogoMark className="h-8 w-8 shrink-0 text-primary md:hidden" />
                 GlucoPred
               </h1>
               <p className="mt-3 max-w-[52ch] text-sm text-muted-foreground">
-                Short-horizon blood-glucose forecasting from continuous-monitor
-                and insulin-pump signals — five models evaluated head-to-head at
-                +15, +30 and +60 minutes.
-                {DEMO && (
-                  <>
-                    {" "}Curves run the project's real model code on simulated
-                    patients; no real medical data.
-                  </>
-                )}
+                {t.header.heroBase}
+                {DEMO && t.header.heroDemoSuffix}
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-start justify-start gap-2 md:justify-end">
+          <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
+            <LanguageToggle />
             <LinkButton href={GITHUB_URL} icon={<FaGithub size={16} />}>
-              Source repo
+              {t.header.demoRepo}
             </LinkButton>
             <LinkButton href={LINKEDIN_URL} icon={<FaLinkedin size={16} />}>
-              Contact
+              {t.header.contact}
             </LinkButton>
           </div>
         </div>
@@ -364,12 +386,12 @@ export default function App() {
         <div className="flex flex-wrap items-center gap-6">
           {DEMO && datasetCount > 1 && (
             <div className="flex items-center gap-3">
-              <span className="cal">Dataset</span>
+              <span className="cal">{t.controls.dataset}</span>
               <div className="flex flex-wrap gap-2">
                 {Array.from({ length: datasetCount }).map((_, i) => (
                   <Toggle
                     key={i}
-                    label={`Set ${i + 1}`}
+                    label={t.controls.setN(i + 1)}
                     active={datasetIndex === i}
                     onClick={() => setDatasetIndex(i)}
                   />
@@ -378,12 +400,12 @@ export default function App() {
             </div>
           )}
           <div className="flex items-center gap-3 md:ml-auto">
-            <span className="cal">Horizon</span>
+            <span className="cal">{t.controls.horizon}</span>
             <Segmented
               options={HORIZONS}
               value={horizon}
               onChange={setHorizon}
-              ariaLabel="Prediction horizon"
+              ariaLabel={t.controls.horizonAriaLabel}
             />
           </div>
         </div>
@@ -391,16 +413,11 @@ export default function App() {
 
       <Card>
         <CardHeader
-          title="Predictions vs actual"
-          subtitle={loading ? "loading…" : undefined}
+          title={t.predictions.title}
+          subtitle={loading ? t.predictions.loading : undefined}
         />
         <p className="mb-3 max-w-[82ch] text-sm text-muted-foreground">
-          The white line is the actual glucose. Every dashed line is a model's
-          forecast for that same moment, made {horizon} minutes earlier from
-          the previous 2 hours of data — never the future. Where a dashed line
-          lands on the white, the prediction was right; the gap is how far off
-          the model was. The shaded band is the in-range target
-          (3.9–10.0 mmol/L).
+          {t.predictions.intro(horizon)}
         </p>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {models.map((m) => (
@@ -427,7 +444,7 @@ export default function App() {
         )}
         {SPLITS.length > 1 && (
           <div className="mt-4 flex flex-wrap items-center justify-end gap-3 text-sm text-muted-foreground">
-            <Field label="Split">
+            <Field label={t.predictions.splitFieldLabel}>
               <Select
                 options={SPLITS}
                 value={split}
@@ -440,37 +457,40 @@ export default function App() {
 
       <Card>
         <CardHeader
-          title="Per-model metrics"
-          subtitle={`${split} split · +${horizon} min`}
+          title={t.metrics.title}
+          subtitle={t.metrics.subtitle(
+            SPLITS.find((s) => s.value === split)?.label ?? split,
+            horizon,
+          )}
         />
-        <p className="mb-4 text-sm text-muted-foreground">
-          Accuracy and clinical-safety scores for every model at the selected
-          horizon.
-        </p>
+        <p className="mb-4 text-sm text-muted-foreground">{t.metrics.intro}</p>
         <Table
-          columns={metricColumns(filteredMetrics, metricsBest)}
+          columns={metricColumns(filteredMetrics, metricsBest, t, lang)}
           rows={filteredMetrics}
           rowKey={(r) => `${r.model}-${r.horizon}`}
         />
         <p className="mt-4 text-xs text-muted-foreground">
-          RMSE / MAE in mmol/L ·{" "}
-          <strong className="text-foreground">TIR agr.</strong> share of points
-          where forecast and truth agree on in-range vs. out ·{" "}
-          <strong className="text-foreground">A+B</strong> clinically acceptable
-          (Clarke) · <strong className="text-foreground">Unsafe</strong> = C+D+E.
-          Best value per column is highlighted; Unsafe ≥ 5% flagged in red.
+          {t.metrics.footnote.units} ·{" "}
+          <strong className="text-foreground">
+            {t.metrics.footnote.tirAgrLabel}
+          </strong>{" "}
+          {t.metrics.footnote.tirAgrDesc} ·{" "}
+          <strong className="text-foreground">
+            {t.metrics.footnote.abLabel}
+          </strong>{" "}
+          {t.metrics.footnote.abDesc} ·{" "}
+          <strong className="text-foreground">
+            {t.metrics.footnote.unsafeLabel}
+          </strong>{" "}
+          {t.metrics.footnote.unsafeTail}
         </p>
       </Card>
 
       <Card>
-        <CardHeader title="Clarke Error Grid" />
+        <CardHeader title={t.clarke.title} />
         {gridModel ? (
           <div className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Every prediction plotted against truth. Distance from the 45°
-              line is the error; the zone it lands in is the clinical
-              consequence of trusting it.
-            </p>
+            <p className="text-sm text-muted-foreground">{t.clarke.intro}</p>
             <div className="flex flex-wrap items-center gap-2">
               {sortModels(models, (m) => m).map((m) => (
                 <Toggle
@@ -496,10 +516,12 @@ export default function App() {
                 <div>
                   <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                     {prettyName(gridModel)}{" "}
-                    {gridModel === "lstm" ? "· neural net" : "· baseline"}
+                    {gridModel === "lstm"
+                      ? t.clarke.neuralNetSuffix
+                      : t.clarke.baselineSuffix}
                   </h3>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    {modelDescription(gridModel, horizon)}
+                    {modelDescription(gridModel, horizon, t)}
                   </p>
                 </div>
                 <ClarkeZoneLegend zonePct={clarkeZonePct} />
@@ -507,9 +529,7 @@ export default function App() {
             </div>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">
-            Toggle at least one model above to populate the grid.
-          </p>
+          <p className="text-sm text-muted-foreground">{t.clarke.emptyState}</p>
         )}
       </Card>
     </main>

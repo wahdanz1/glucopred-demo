@@ -13,6 +13,7 @@ import {
 import type { PredictionPoint } from "../lib/api";
 import { MODEL_ORDER, colorFor, lineStyleFor, prettyName } from "../lib/models";
 import { useIsMobile } from "../lib/useIsMobile";
+import { useTDeferred, useLang } from "../lib/i18n";
 
 interface PredictionChartProps {
   points: PredictionPoint[];
@@ -27,8 +28,8 @@ const TIR_LOW = 3.9;
 const TIR_HIGH = 10.0;
 const MIN_SPAN_MS = 30 * 60 * 1000; // don't zoom tighter than 30 minutes
 
-function formatTime(ms: number): string {
-  return new Date(ms).toLocaleTimeString([], {
+function formatTime(ms: number, lang: string): string {
+  return new Date(ms).toLocaleTimeString(lang, {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -62,15 +63,17 @@ function rankEntry(key: string | number | undefined): number {
   return i === -1 ? Number.MAX_SAFE_INTEGER : i;
 }
 
-// Sorted ("Actual" first), styled tooltip rows. Pure body — caller wraps it
+// Sorted ("Actual" first), styled tooltip rows. Pure body - caller wraps it
 // in whatever chrome fits (floating card for the desktop inline tooltip;
 // the dedicated mobile panel above the chart).
 function TooltipBody({
   payload,
   label,
+  lang,
 }: {
   payload: TooltipEntry[];
   label?: number | string;
+  lang: string;
 }) {
   const ordered = [...payload].sort(
     (a, b) => rankEntry(a.dataKey) - rankEntry(b.dataKey),
@@ -78,7 +81,7 @@ function TooltipBody({
   return (
     <>
       <div className="mb-1 text-muted-foreground">
-        {label != null ? new Date(Number(label)).toLocaleString() : ""}
+        {label != null ? new Date(Number(label)).toLocaleString(lang) : ""}
       </div>
       {ordered.map((e) => {
         const isActual = e.dataKey === "actual";
@@ -111,10 +114,12 @@ function ChartTooltip({
   active,
   payload,
   label,
+  lang,
 }: {
   active?: boolean;
   payload?: TooltipEntry[];
   label?: number | string;
+  lang: string;
 }) {
   if (!active || !payload?.length) return null;
   return (
@@ -122,7 +127,7 @@ function ChartTooltip({
       className="rounded-md border border-border bg-card px-3 py-2 text-xs"
       style={{ animation: "tooltipFadeIn 140ms ease-out" }}
     >
-      <TooltipBody payload={payload} label={label} />
+      <TooltipBody payload={payload} label={label} lang={lang} />
     </div>
   );
 }
@@ -133,6 +138,8 @@ export function PredictionChart({
   horizon,
   defaultZoomHours,
 }: PredictionChartProps) {
+  const t = useTDeferred();
+  const { lang } = useLang();
   const isMobile = useIsMobile();
   const [hover, setHover] = useState<{
     payload: TooltipEntry[];
@@ -150,7 +157,7 @@ export function PredictionChart({
 
   // Dexcom-style fixed ceiling for recognizability: 16 normally, 22 if any value
   // (actual or predicted) exceeds 16.
-  // Recharts' touch handler exposes activeIndex but not activePayload — that
+  // Recharts' touch handler exposes activeIndex but not activePayload - that
   // field is mouse-only. Reconstruct the payload from data[activeIndex] so the
   // mobile readout panel can render the same content the desktop tooltip does.
   const buildPayload = (idx: number): TooltipEntry[] => {
@@ -161,7 +168,7 @@ export function PredictionChart({
     if (typeof actualVal === "number" && Number.isFinite(actualVal)) {
       out.push({
         dataKey: "actual",
-        name: "Actual",
+        name: t.predictions.actualSeriesName,
         value: actualVal,
         color: colorFor("actual"),
       });
@@ -171,7 +178,7 @@ export function PredictionChart({
       if (typeof v === "number" && Number.isFinite(v)) {
         out.push({
           dataKey: m,
-          name: `${prettyName(m)} (+${horizon}m)`,
+          name: t.predictions.modelSeriesName(prettyName(m), horizon),
           value: v,
           color: colorFor(m),
         });
@@ -268,7 +275,7 @@ export function PredictionChart({
   if (points.length === 0) {
     return (
       <div className="flex h-72 items-center justify-center text-sm text-muted-foreground">
-        No data in this range.
+        {t.predictions.noData}
       </div>
     );
   }
@@ -281,10 +288,10 @@ export function PredictionChart({
         // the chart from jumping as the user moves their finger.
         <div className="mb-2 min-h-[8.5rem] rounded-md border border-border bg-card px-3 py-2 text-xs">
           {hover ? (
-            <TooltipBody payload={hover.payload} label={hover.label} />
+            <TooltipBody payload={hover.payload} label={hover.label} lang={lang} />
           ) : (
             <span className="text-muted-foreground">
-              Tap or drag a finger along the chart to inspect any moment.
+              {t.predictions.mobileHint}
             </span>
           )}
         </div>
@@ -329,7 +336,7 @@ export function PredictionChart({
               activeIndex?: number | string | null;
             } | undefined) => {
               // Recharts' touch state returns activeIndex as a STRING and
-              // omits activePayload — rebuild the payload from data[idx]
+              // omits activePayload - rebuild the payload from data[idx]
               // ourselves so the mobile readout panel can render values.
               let payload = state?.activePayload;
               const idxNum =
@@ -373,7 +380,7 @@ export function PredictionChart({
               scale="time"
               domain={view}
               allowDataOverflow
-              tickFormatter={formatTime}
+              tickFormatter={(ms) => formatTime(ms as number, lang)}
               stroke="var(--color-muted-foreground)"
               tick={{ fontSize: 11 }}
               minTickGap={48}
@@ -398,7 +405,14 @@ export function PredictionChart({
                 keeping the cursor + active dots visible while the dedicated
                 panel above the chart shows the values. */}
             <Tooltip
-              content={<ChartTooltip />}
+              content={(props) => (
+                <ChartTooltip
+                  active={props.active}
+                  payload={props.payload as unknown as TooltipEntry[] | undefined}
+                  label={props.label}
+                  lang={lang}
+                />
+              )}
               isAnimationActive={false}
               wrapperStyle={isMobile ? { display: "none" } : undefined}
             />
@@ -409,7 +423,7 @@ export function PredictionChart({
             strokeWidth={2}
             dot={false}
             isAnimationActive={false}
-            name="Actual"
+            name={t.predictions.actualSeriesName}
           />
           {models.map((m) => {
             const ls = lineStyleFor(m);
@@ -424,7 +438,7 @@ export function PredictionChart({
                 strokeLinecap="round"
                 dot={false}
                 isAnimationActive={false}
-                name={`${prettyName(m)} (+${horizon}m)`}
+                name={t.predictions.modelSeriesName(prettyName(m), horizon)}
                 connectNulls
               />
             );
@@ -435,7 +449,7 @@ export function PredictionChart({
               stroke="var(--color-border)"
               fill="var(--color-muted)"
               travellerWidth={10}
-              tickFormatter={(t) => formatTime(t as number)}
+              tickFormatter={(ts) => formatTime(ts as number, lang)}
               startIndex={startIndex}
               endIndex={endIndex}
               onChange={onBrushChange}
