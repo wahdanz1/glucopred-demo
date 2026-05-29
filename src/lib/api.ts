@@ -11,6 +11,7 @@ export interface MetricRow {
   clarke_C: number;
   clarke_D: number;
   clarke_E: number;
+  clarke_unsafe: number;
 }
 
 export interface PredictionPoint {
@@ -29,6 +30,19 @@ export interface TimeRange {
   start: string;
   end: string;
 }
+
+export type ZoneKey = "A" | "B" | "C" | "D" | "E";
+
+export interface ClarkePoint {
+  model: string;
+  horizon: number;
+  actual: number;
+  pred: number;
+  zone: ZoneKey;
+}
+
+// Polygons per zone in (ref_mmol, pred_mmol). Zone B is the implicit background.
+export type ClarkePolygons = Record<"A" | "B" | "C" | "D" | "E", [number, number][][]>;
 
 import * as demo from "./demo";
 
@@ -68,6 +82,27 @@ export function fetchRange(split: string): Promise<TimeRange> {
 export function fetchMetrics(split: string): Promise<MetricRow[]> {
   if (DEMO) return demo.demoMetrics(split);
   return getJson<MetricRow[]>(`/api/metrics?split=${split}`);
+}
+
+export function fetchClarkeBoundaries(): Promise<ClarkePolygons> {
+  if (DEMO) return demo.demoClarkeBoundaries();
+  return getJson<ClarkePolygons>("/api/clarke-boundaries");
+}
+
+export function fetchClarkePoints(
+  params: { model: string; horizon: number; split: string },
+  signal?: AbortSignal,
+): Promise<ClarkePoint[]> {
+  if (DEMO) return demo.demoClarkePoints(params);
+  const q = new URLSearchParams({
+    model: params.model,
+    horizon: String(params.horizon),
+    split: params.split,
+  });
+  return fetch(`/api/clarke-points?${q}`, { signal }).then(async (res) => {
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
+    return res.json() as Promise<ClarkePoint[]>;
+  });
 }
 
 export function fetchPredictions(params: {

@@ -1,6 +1,13 @@
 // Demo-mode data layer: serves the bundled synthetic JSON (frontend/public/
 // demo-data/) so the deployed app needs no backend. Mirrors the api.ts contract.
-import type { MetricRow, PredictionPoint, PredictionsResponse, TimeRange } from "./api";
+import type {
+  ClarkePoint,
+  ClarkePolygons,
+  MetricRow,
+  PredictionPoint,
+  PredictionsResponse,
+  TimeRange,
+} from "./api";
 
 interface DemoPoint {
   timestamp: string;
@@ -27,6 +34,9 @@ let current = 0;
 let _meta: Promise<DemoMeta> | null = null;
 let _metrics: Promise<MetricRow[]> | null = null;
 let _points: Promise<DemoPoint[]> | null = null;
+let _clarkePoints: Promise<ClarkePoint[]> | null = null;
+// Zone polygons are constant across datasets, so the cache outlives setDemoDataset.
+let _clarkeBoundaries: Promise<ClarkePolygons> | null = null;
 
 function datasetIds(): Promise<string[]> {
   return (_ids ??= fetch(`${BASE}/index.json`)
@@ -46,6 +56,7 @@ async function load<T>(file: string): Promise<T> {
 const meta = () => (_meta ??= load<DemoMeta>("meta.json"));
 const metrics = () => (_metrics ??= load<MetricRow[]>("metrics.json"));
 const points = () => (_points ??= load<DemoPoint[]>("predictions.json"));
+const clarkePoints = () => (_clarkePoints ??= load<ClarkePoint[]>("clarke_points.json"));
 
 export async function demoDatasetCount(): Promise<number> {
   return (await datasetIds()).length;
@@ -53,7 +64,24 @@ export async function demoDatasetCount(): Promise<number> {
 
 export function setDemoDataset(i: number): void {
   current = i;
-  _meta = _metrics = _points = null; // force reload from the newly-selected dataset
+  // Force reload of per-dataset files; boundaries are constant and stay cached.
+  _meta = _metrics = _points = _clarkePoints = null;
+}
+
+export function demoClarkeBoundaries(): Promise<ClarkePolygons> {
+  return (_clarkeBoundaries ??= fetch(`${BASE}/clarke_boundaries.json`).then((r) => {
+    if (!r.ok) throw new Error(`demo data clarke_boundaries.json: ${r.status}`);
+    return r.json() as Promise<ClarkePolygons>;
+  }));
+}
+
+export async function demoClarkePoints(params: {
+  model: string;
+  horizon: number;
+  split: string;
+}): Promise<ClarkePoint[]> {
+  const all = await clarkePoints();
+  return all.filter((p) => p.model === params.model && p.horizon === params.horizon);
 }
 
 export async function demoModels(): Promise<string[]> {

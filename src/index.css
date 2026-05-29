@@ -1,25 +1,60 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --color-background: #0b0d12;
-  --color-foreground: #e6e8ec;
-  --color-muted: #1a1d24;
-  --color-muted-foreground: #8a92a3;
-  --color-card: #12151c;
-  --color-border: #1f2330;
-  --color-primary: #7aa37a;
-  --color-accent: #6c8eb6;
+  /* ─── Calibrated-instrument palette ───────────────────────────────────
+     Deep cool blue ink (oklch ~0.165 / 248) for canvases and chrome;
+     luminous cyan-mint (oklch ~0.845 / 188) for the signal accent (ground
+     truth line, active states, best-per-column, "?" prefix, NEURAL pill).
+     Cyan stays disciplined - it never leaks onto generic primary-button
+     duty; everywhere else stays neutral cool-blue. */
+  --color-background: oklch(0.165 0.015 248);
+  --color-card: oklch(0.208 0.017 248);
+  --color-muted: oklch(0.248 0.019 248);
+  --color-border: oklch(0.305 0.018 248);
+  --color-foreground: oklch(0.972 0.008 230);
+  --color-muted-foreground: oklch(0.625 0.015 240);
 
-  --color-actual: #e6e8ec;
-  --color-ar-2: #7aa37a;
-  --color-persistence: #6c8eb6;
-  --color-moving-average-5: #cca65a;
-  --color-linear-extrapolation: #a8a8a8;
+  --color-primary: oklch(0.845 0.145 188);          /* cyan-mint signal */
+  --color-primary-dim: oklch(0.74 0.13 190);
+  --color-primary-tint: oklch(0.30 0.06 200 / 0.55);
+  --color-accent: oklch(0.845 0.145 188);
 
-  --color-band: rgba(122, 163, 122, 0.08);
+  --color-band: oklch(0.72 0.075 162 / 0.12);       /* sage in-range band */
+  --color-range: oklch(0.72 0.075 162);
 
-  --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, Consolas, monospace;
+  --color-danger: oklch(0.66 0.205 26);
+
+  /* Model line colors. Actual returns to near-white as the universal "ground
+     truth reference" convention; LSTM takes the cyan-mint brand accent so it
+     ties visually to the NEURAL badge, the "?" icon, and the active states.
+     Reads as: white = what you're measuring against, colors = the models
+     doing the measuring; cyan signals "this is the trained one". */
+  --color-actual: oklch(0.972 0.008 230);           /* near-white ground truth */
+  --color-persistence: #5a9bd5;
+  --color-moving-average-5: #f3a653;
+  --color-ar-2: #6ec06e;
+  --color-linear-extrapolation: #c089bd;
+  --color-lstm: oklch(0.845 0.145 188);              /* cyan-mint - the hero */
+
+  /* Clarke zones - clinical green -> red gradient. */
+  --color-zone-a: #7aa37a;
+  --color-zone-b: #b8b566;
+  --color-zone-c: #d4a256;
+  --color-zone-d: #c9744a;
+  --color-zone-e: #b85454;
+
+  /* Type scale. */
+  --text-xs: 0.8125rem;       /* 13px */
+  --text-sm: 0.9375rem;       /* 15px - default body */
+  --text-base: 1.0625rem;     /* 17px */
+  --text-lg: 1.25rem;         /* 20px */
+  --text-xl: 1.5rem;          /* 24px */
+  --text-2xl: 1.75rem;        /* 28px */
+  --text-3xl: 2rem;           /* 32px */
+
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
 html, body, #root {
@@ -28,4 +63,93 @@ html, body, #root {
   background: var(--color-background);
   color: var(--color-foreground);
   font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Themed scrollbars (Firefox + WebKit). Default OS chrome is bright on a
+   dark canvas - paints a light bar that breaks the calibrated-instrument
+   feel. Thin, border-tinted, surfaces on hover. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-muted-foreground);
+}
+*::-webkit-scrollbar-corner { background: transparent; }
+
+/* Calibration label: tiny mono uppercase letter-spaced caps. Used for
+   section eyebrows, control-bar labels ("DATASET", "HORIZON"), table
+   headers, axis units, NEURAL pill. The recurring meta-label of the
+   instrument language. */
+.cal {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
+}
+
+/* Apply mono with tabular nums to anything explicitly numeric. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Recharts SVG and surface elements can pick up a focus outline when the
+   wrapper receives click focus - which paints a thin white rectangle frame
+   around the plot area. Suppress it. */
+.recharts-wrapper svg,
+.recharts-wrapper svg *,
+.recharts-surface,
+.recharts-tooltip-wrapper {
+  outline: none !important;
+}
+
+/* Recharts <Brush> tick labels default to a dim fill that disappears
+   against our dark theme. Force readable contrast + the mono treatment. */
+.recharts-brush text {
+  fill: var(--color-muted-foreground) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 11px !important;
+}
+
+/* Select popover slide-down on open. */
+@keyframes selectMenuIn {
+  from { opacity: 0; transform: scaleY(0.85) translateY(-2px); }
+  to   { opacity: 1; transform: scaleY(1) translateY(0); }
+}
+
+/* Chart tooltip fade-in. Used in place of Recharts' default transform
+   animation, which slid the tooltip from the chart's top-left every time
+   it activated. */
+@keyframes tooltipFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Animate <details> open/close via ::details-content + interpolate-size. */
+@supports (interpolate-size: allow-keywords) {
+  :root { interpolate-size: allow-keywords; }
+  details::details-content {
+    block-size: 0;
+    overflow: clip;
+    opacity: 0;
+    transition:
+      block-size 280ms ease-out,
+      opacity 220ms ease-out,
+      content-visibility 280ms ease-out allow-discrete;
+  }
+  details[open]::details-content {
+    block-size: auto;
+    opacity: 1;
+  }
 }

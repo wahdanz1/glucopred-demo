@@ -9,7 +9,7 @@ export function Card({ children, className, ...rest }: CardProps) {
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-card p-5",
+        "rounded-lg border border-border bg-card p-6",
         className,
       )}
       {...rest}
@@ -22,15 +22,19 @@ export function Card({ children, className, ...rest }: CardProps) {
 interface CardHeaderProps {
   title: string;
   subtitle?: string;
+  actions?: ReactNode;
 }
 
-export function CardHeader({ title, subtitle }: CardHeaderProps) {
+export function CardHeader({ title, subtitle, actions }: CardHeaderProps) {
   return (
-    <div className="mb-4 flex items-baseline justify-between">
-      <h2 className="text-base font-medium text-foreground">{title}</h2>
-      {subtitle && (
-        <span className="text-xs text-muted-foreground">{subtitle}</span>
-      )}
+    <div className="mb-4 flex items-center justify-between gap-3">
+      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      <div className="flex items-baseline gap-3">
+        {subtitle && (
+          <span className="text-sm text-muted-foreground">{subtitle}</span>
+        )}
+        {actions}
+      </div>
     </div>
   );
 }
